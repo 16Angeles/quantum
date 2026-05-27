@@ -1,16 +1,3 @@
-"""
-============================================================================
-Лабораторная работа №1. Вариант 2.
-Задача нескольких коммивояжёров: минимизация времени обхода (mTSP-makespan)
-
-Реализованы два метода СТРОГО по методичке:
-  1. Baseline (Greedy + 2-opt): 4 этапа из раздела 3.3
-  2. Simulated Annealing: 3 компонента из раздела 3.1
-
-Запуск: python Lab_1_FamiliyaIO.py
-============================================================================
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -18,10 +5,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-# ============================================================
-# ИСХОДНЫЕ ДАННЫЕ — ВАРИАНТ 2
-# ============================================================
-
+# ИСХОДНЫЕ ДАННЫЕ ПО ВАРИАНТУ (города, агенты, стартовые точки, матрица и еще сиды)
 N_CITIES = 12
 N_AGENTS = 2
 DEPOTS = [0, 6]
@@ -44,41 +28,32 @@ DIST = np.array([
 NON_DEPOT_CITIES = [c for c in range(N_CITIES) if c not in DEPOTS]
 N_RUNS = 10
 SEEDS = list(range(0, 0 + N_RUNS))
-
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================
-
+ 
+# Длина замкнутого маршрута
 def tour_length(tour):
-    """Длина замкнутого маршрута."""
     length = 0.0
     for i in range(len(tour)):
         length += DIST[tour[i], tour[(i + 1) % len(tour)]]
     return float(length)
 
-
+# Целевая функция: max длины маршрута среди агентов (энергия E)
 def makespan(routes):
-    """Целевая функция: max длины маршрута среди агентов (энергия E)."""
     return max(tour_length(r) for r in routes)
 
-
+# Суммарная длина всех маршрутов
 def total_length(routes):
-    """Суммарная длина всех маршрутов."""
     return sum(tour_length(r) for r in routes)
 
-
+#Коэффициент баланса = std / mean длин маршрутов
 def balance_coeff(routes):
-    """Коэффициент баланса = std / mean длин маршрутов."""
     lengths = [tour_length(r) for r in routes]
     mean_l = np.mean(lengths)
     if mean_l == 0:
         return 0.0
     return float(np.std(lengths) / mean_l)
 
-
+# Все города по одному разу, депо на месте, у каждого ≥1 не-депо город.
 def is_feasible(routes):
-    """Все города по одному разу, депо на месте, у каждого ≥1 не-депо город."""
     all_cities = []
     for k, route in enumerate(routes):
         if len(route) < 2 or route[0] != DEPOTS[k]:
@@ -86,7 +61,7 @@ def is_feasible(routes):
         all_cities.extend(route)
     return sorted(all_cities) == list(range(N_CITIES))
 
-
+# Вся инфа по решению
 def solution_info(routes):
     return {
         'makespan': makespan(routes),
@@ -98,14 +73,10 @@ def solution_info(routes):
     }
 
 
-# ============================================================
-# МЕТОД 1: BASELINE (GREEDY + 2-OPT) — СТРОГО ПО МЕТОДИЧКЕ
-# ============================================================
+#BASELINE + 4 этапа из методички
 
+# Этап 1: сортировка пар городов, по возрастанию расстояния.
 def sort_city_pairs():
-    """
-    Этап 1: сортировка пар городов (i, j), i < j, по возрастанию расстояния.
-    """
     pairs = []
     for i in range(N_CITIES):
         for j in range(i + 1, N_CITIES):
@@ -114,12 +85,8 @@ def sort_city_pairs():
     return pairs
 
 
+# Этап 2: жадное назначение городов агентам. Идём по парам в порядке возрастания расстояния, формируем порядок городов, каждый назначаем агенту с np.argmin(length).
 def greedy_assignment(sorted_pairs):
-    """
-    Этап 2: жадное назначение городов агентам.
-    Идём по парам в порядке возрастания расстояния, формируем порядок городов,
-    каждый назначаем агенту с МИНИМАЛЬНОЙ ТЕКУЩЕЙ ДЛИНОЙ МАРШРУТА.
-    """
     routes = [[DEPOTS[k]] for k in range(N_AGENTS)]
     visited = set(DEPOTS)
 
@@ -136,11 +103,8 @@ def greedy_assignment(sorted_pairs):
 
     return routes
 
-
+# Этап 3: 2-opt для замкнутого маршрута. Депо (route[0]) не трогаем.
 def two_opt(route):
-    """
-    Этап 3: 2-opt для замкнутого маршрута. Депо (route[0]) не трогаем.
-    """
     n = len(route)
     if n < 4:
         return route
@@ -157,11 +121,8 @@ def two_opt(route):
                     improved = True
     return route
 
-
+# Этап 4: попытки переноса городов между агентами для балансировки.
 def inter_route_balancing(routes):
-    """
-    Этап 4: попытки переноса городов между агентами для балансировки.
-    """
     improved = True
     while improved:
         improved = False
@@ -202,26 +163,18 @@ def inter_route_balancing(routes):
 
     return routes
 
-
+# Сам baseline
 def solve_baseline():
-    """
-    Baseline — 4 этапа из методички.
-    Алгоритм полностью детерминированный.
-    """
-    sorted_pairs = sort_city_pairs()             # Этап 1
-    routes = greedy_assignment(sorted_pairs)     # Этап 2
-    for k in range(N_AGENTS):                    # Этап 3
+    sorted_pairs = sort_city_pairs()             # первый этап
+    routes = greedy_assignment(sorted_pairs)     # второй этап
+    for k in range(N_AGENTS):                    # третий этап
         routes[k] = two_opt(routes[k])
-    routes = inter_route_balancing(routes)       # Этап 4
+    routes = inter_route_balancing(routes)       # четвертый этап
     return routes
 
-
-# ============================================================
-# МЕТОД 2: SIMULATED ANNEALING — СТРОГО ПО МЕТОДИЧКЕ
-# ============================================================
-
+# SA-метод
+#  Случайное начальное решение
 def random_initial_solution():
-    """Случайное начальное решение."""
     cities = list(NON_DEPOT_CITIES)
     np.random.shuffle(cities)
     split = np.random.randint(1, len(cities))
@@ -230,15 +183,8 @@ def random_initial_solution():
         [DEPOTS[1]] + cities[split:],
     ]
 
-
+# Соседи через перестановки, я взял свап внутри маршрута (0), свап между маршрутами (1) и перенос между маршрутами (else/2)
 def neighbor(routes):
-    """
-    Компонент 3 методички: генерация соседних состояний через перестановки.
-      0: swap внутри маршрута
-      1: swap между маршрутами
-      2: relocate (перенос между маршрутами)
-    Депо не трогаем.
-    """
     new_routes = [list(r) for r in routes]
     op = np.random.randint(0, 3)
 
@@ -266,12 +212,8 @@ def neighbor(routes):
 
     return new_routes
 
-
+# Cчитаем Т0 на основе формулы из методички + раномного решения которое выше получили
 def estimate_T0(target_acceptance=0.8, n_samples=1000):
-    """
-    Подбор T0: ~80% принятия ухудшающих переходов на старте.
-    Формула: T0 = -mean(dE_positive) / ln(0.8)
-    """
     current = random_initial_solution()
     current_cost = makespan(current)
 
@@ -294,20 +236,8 @@ def estimate_T0(target_acceptance=0.8, n_samples=1000):
         return 10.0
     return float(-mean_delta / np.log(target_acceptance))
 
-
+# Сам код для SA с соблюдением критериев из методички
 def simulated_annealing(alpha=0.97, T_min=0.001, max_iter=100000, T0=None):
-    """
-    SA по методичке:
-      Компонент 1: T(t) = T0 * alpha^t
-      Компонент 2: критерий Метрополиса
-      Компонент 3: соседи через перестановки
-
-    Параметры:
-      alpha   — коэффициент охлаждения [0.93..0.99], типично 0.97
-      T_min   — критерий остановки, 0.001
-      max_iter — макс число итераций
-      T0      — если None, подбирается автоматически
-    """
     if T0 is None:
         T0 = estimate_T0()
 
@@ -361,24 +291,21 @@ def simulated_annealing(alpha=0.97, T_min=0.001, max_iter=100000, T0=None):
     return best, best_cost, (history_best, history_curr), T0
 
 
-# ============================================================
-# ЭКСПЕРИМЕНТЫ
-# ============================================================
-
+# Непосредственно эксперименты (как мамикс в прайме / пасхалка)
 def run_experiments():
     results = {'baseline': [], 'sa': []}
     histories_sa = []
     T0_used = []
 
-    print("=" * 70)
+    print("." * 70)
     print("ЭКСПЕРИМЕНТЫ: mTSP-makespan, Вариант 2")
     print(f"Города: {N_CITIES}, Агенты: {N_AGENTS}, Депо: {DEPOTS}")
-    print("=" * 70)
+    print("." * 70)
 
     for run, seed in enumerate(SEEDS):
         print(f"\n--- Запуск {run+1}/{N_RUNS} (seed={seed}) ---")
 
-        # Baseline — детерминированный, но запускаем 10 раз для отчётности
+        # Baseline нет смысла запускать 10 раз, но чтоб красиво выглядел вывод, запустим
         np.random.seed(seed)
         t0 = time.time()
         bl_routes = solve_baseline()
@@ -408,11 +335,7 @@ def run_experiments():
     print(f"\n  Средняя T0 (автоподбор): {np.mean(T0_used):.2f}")
     return results, histories_sa
 
-
-# ============================================================
-# СТАТИСТИКА
-# ============================================================
-
+# Функция для вывода статистики по 10 запускам + тут же гэп + лучшие решения
 def print_statistics(results):
     print("\n" + "=" * 70)
     print("СТАТИСТИКА (10 запусков)")
@@ -456,10 +379,7 @@ def print_statistics(results):
             print(f"    Агент {k} (депо {DEPOTS[k]}): {r}")
 
 
-# ============================================================
-# ГРАФИКИ
-# ============================================================
-
+# Рисуем графики через любимый матплотлиб который преследует уже 5 год (название функции - по сути название графика / я сохранял себе на комп чтоб отчет в md формате делать, поэтому не забудьте почистить память компа потом, зачем вам мои рисуночки)
 def plot_convergence(histories_sa):
     fig, axes = plt.subplots(1, 2, figsize=(15, 5))
 
@@ -515,7 +435,6 @@ def plot_boxplots(results):
 
 
 def plot_heatmap_sa():
-    """Тепловая карта: makespan от (T0, alpha)."""
     T0_vals = [1, 5, 10, 50, 100]
     alpha_vals = [0.90, 0.93, 0.95, 0.97, 0.99]
     hm = np.zeros((len(T0_vals), len(alpha_vals)))
@@ -555,7 +474,6 @@ def plot_heatmap_sa():
 
 
 def plot_routes(results):
-    """Визуализация лучших маршрутов в MDS-проекции."""
     D2 = DIST ** 2
     n = N_CITIES
     H = np.eye(n) - np.ones((n, n)) / n
@@ -616,18 +534,11 @@ def plot_time_comparison(results):
     plt.show()
     print("  -> time_comparison.png")
 
-
-# ============================================================
-# MAIN
-# ============================================================
-
 def main():
     results, histories_sa = run_experiments()
     print_statistics(results)
 
-    print("\n" + "=" * 70)
     print("ПОСТРОЕНИЕ ГРАФИКОВ")
-    print("=" * 70)
 
     plot_convergence(histories_sa)
     plot_boxplots(results)
@@ -635,15 +546,14 @@ def main():
     plot_routes(results)
     plot_time_comparison(results)
 
-    print("\n" + "=" * 70)
-    print("ГОТОВО.")
+    print("\n")
+    print("Конец..")
     print("Файлы:")
     print("  - convergence.png")
     print("  - boxplots.png")
     print("  - heatmap_sa.png")
     print("  - routes.png")
     print("  - time_comparison.png")
-    print("=" * 70)
 
 
 if __name__ == "__main__":
